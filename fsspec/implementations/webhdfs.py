@@ -444,6 +444,7 @@ class WebHDFile(AbstractBufferedFile):
             out3 = self.fs._call("APPEND", "POST", self.path, redirect=False, **kwargs)	
             out3.raise_for_status()	
             location = self.fs._apply_proxy(out3.headers["Location"])	
+		
         self.location = location
 
     def _fetch_range(self, start, end):
