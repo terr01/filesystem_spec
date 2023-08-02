@@ -440,7 +440,7 @@ class WebHDFile(AbstractBufferedFile):
             )
             out2.raise_for_status()
             
-	if "a" not in self.mode:	
+        if "a" not in self.mode:
             out3 = self.fs._call("APPEND", "POST", self.path, redirect=False, **kwargs)	
             out3.raise_for_status()	
             location = self.fs._apply_proxy(out3.headers["Location"])	
