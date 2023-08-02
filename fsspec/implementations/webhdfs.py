@@ -51,6 +51,11 @@ class WebHDFS(AbstractFileSystem):
         kerb_kwargs=None,
         data_proxy=None,
         use_https=False,
+        base_uri_pattern="{protocol}://{host}:{port}/webhdfs/v1",	
+        ssl_verify=True,	
+        knox=False,	
+        knox_credentials=None,	
+
         **kwargs,
     ):
         """
@@ -89,7 +94,7 @@ class WebHDFS(AbstractFileSystem):
         if self._cached:
             return
         super().__init__(**kwargs)
-        self.url = "{protocol}://{host}:{port}/webhdfs/v1".format(
+        self.url = base_uri_pattern.format(
             protocol="https" if use_https else "http", host=host, port=port
         )
         self.kerb = kerberos
@@ -113,6 +118,13 @@ class WebHDFS(AbstractFileSystem):
                 "If using Kerberos auth, do not specify the "
                 "user, this is handled by kinit."
             )
+	    
+        self.ssl_verify = ssl_verify	
+        if not ssl_verify:	
+            from requests.packages.urllib3.exceptions import InsecureRequestWarning	
+            requests.packages.urllib3.disable_warnings(InsecureRequestWarning)	
+        self.knox = knox	
+        self.knox_credentials = knox_credentials
         self._connect()
 
         self._fsid = "webhdfs_" + tokenize(host, port)
@@ -123,10 +135,17 @@ class WebHDFS(AbstractFileSystem):
 
     def _connect(self):
         self.session = requests.Session()
+        self.session.verify = self.ssl_verify	
+
         if self.kerb:
             from requests_kerberos import HTTPKerberosAuth
 
             self.session.auth = HTTPKerberosAuth(**self.kerb_kwargs)
+
+        elif self.knox:	
+            from requests.auth import HTTPBasicAuth	
+            
+            self.session.auth = HTTPBasicAuth(*self.knox_credentials)
 
     def _call(self, op, method="get", path=None, data=None, redirect=True, **kwargs):
         url = self.url + quote(path or "")
@@ -420,9 +439,12 @@ class WebHDFile(AbstractBufferedFile):
                 location, headers={"content-type": "application/octet-stream"}
             )
             out2.raise_for_status()
-            # after creating empty file, change location to append to
-            out2 = self.fs._call("APPEND", "POST", self.path, redirect=False, **kwargs)
-            self.location = self.fs._apply_proxy(out2.headers["Location"])
+            
+	    if "a" not in self.mode:	
+            out3 = self.fs._call("APPEND", "POST", self.path, redirect=False, **kwargs)	
+            out3.raise_for_status()	
+            location = self.fs._apply_proxy(out3.headers["Location"])	
+        self.location = location
 
     def _fetch_range(self, start, end):
         start = max(start, 0)
